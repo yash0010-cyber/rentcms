@@ -14,6 +14,11 @@ class Email {
      * Initialize PHPMailer
      */
     private static function initMail() {
+        if (!class_exists(PHPMailer::class)) {
+            error_log('PHPMailer not installed. Run composer install.');
+            return false;
+        }
+
         if (self::$mail === null) {
             self::$mail = new PHPMailer(true);
 
@@ -296,14 +301,14 @@ class Email {
     /**
      * Log email to database
      */
-    private static function logEmail($email, $subject, $type, $status, $error = '') {
+    private static function logEmail($email, $subject, $type, $status, $error = '', $userId = null) {
         try {
             $db = Database::getInstance()->getConnection();
             $stmt = $db->prepare("
-                INSERT INTO email_logs (recipient_email, subject, email_type, status, error_message)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO email_logs (user_id, recipient_email, subject, email_type, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([$email, $subject, $type, $status, $error]);
+            $stmt->execute([$userId, $email, $subject, $type, $status, $error]);
         } catch (Exception $e) {
             error_log("Email log error: " . $e->getMessage());
         }

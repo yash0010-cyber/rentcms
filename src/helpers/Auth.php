@@ -14,42 +14,40 @@ class Auth {
     /**
      * Register a new user
      */
-    public function register($name, $email, $password, $phone = '', $role = 'tenant') {
-        // Validate email
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    public function register($username, $fullName, $email, $password, $phone = '', $role = 'tenant') {
+        if (!Validator::email($email)) {
             return ['success' => false, 'message' => 'Invalid email address'];
         }
 
-        // Check if email already exists
-        $stmt = $this->db->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
-        if ($stmt->rowCount() > 0) {
-            return ['success' => false, 'message' => 'Email already registered'];
+        if (!Validator::username($username)) {
+            return ['success' => false, 'message' => 'Username must be 3-20 characters and contain only letters, numbers, or underscores'];
         }
 
-        // Hash password
-        $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+        $passwordCheck = Validator::password($password);
+        if (!$passwordCheck['valid']) {
+            return ['success' => false, 'message' => $passwordCheck['message']];
+        }
 
-        // Generate email verification token
-        $token = bin2hex(random_bytes(32));
+        $stmt = $this->db->prepare("SELECT id FROM users WHERE email = ? OR username = ?");
+        $stmt->execute([$email, $username]);
+        if ($stmt->rowCount() > 0) {
+            return ['success' => false, 'message' => 'Email or username already registered'];
+        }
+
+        $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+        $token = REQUIRE_EMAIL_VERIFICATION ? bin2hex(random_bytes(32)) : null;
+        $emailVerified = REQUIRE_EMAIL_VERIFICATION ? 0 : 1;
 
         try {
             $stmt = $this->db->prepare("
-                INSERT INTO users (name, email, password, phone, role, email_token, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO users (username, full_name, email, password, phone, role, status, email_verified, verification_token, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW())
             ");
 
-            $stmt->execute([$name, $email, $hashedPassword, $phone, $role, $token]);
+            $stmt->execute([$username, $fullName, $email, $hashedPassword, $phone, $role, $emailVerified, $token]);
 
-            // Send verification email
             if (REQUIRE_EMAIL_VERIFICATION) {
-                Email::sendVerification($email, $name, $token);
-            } else {
-                // Mark email as verified if verification not required
-                $updateStmt = $this->db->prepare("
-                    UPDATE users SET email_verified = 1 WHERE email = ?
-                ");
-                $updateStmt->execute([$email]);
+                Email::sendVerification($email, $fullName ?: $username, $token);
             }
 
             return ['success' => true, 'message' => 'Registration successful. Please check your email.'];
@@ -69,7 +67,7 @@ class Auth {
 
         try {
             $stmt = $this->db->prepare("
-                SELECT id, name, email, password, role, status, email_verified 
+                SELECT id, username, full_name, email, password, role, status, email_verified 
                 FROM users 
                 WHERE email = ?
             ");
@@ -82,7 +80,7 @@ class Auth {
             $user = $stmt->fetch();
 
             // Check if user is active
-            if ($user['status'] == 0) {
+            if ($user['status'] !== 'active') {
                 return ['success' => false, 'message' => 'Your account has been suspended'];
             }
 
@@ -97,14 +95,12 @@ class Auth {
             }
 
             // Update last login
-            $updateStmt = $this->db->prepare("
-                UPDATE users SET last_login = NOW() WHERE id = ?
-            ");
+            $updateStmt = $this->db->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
             $updateStmt->execute([$user['id']]);
 
             // Set session
             $_SESSION['user_id'] = $user['id'];
-            $_SESSION['user_name'] = $user['name'];
+            $_SESSION['user_name'] = $user['full_name'] ?: $user['username'];
             $_SESSION['user_email'] = $user['email'];
             $_SESSION['user_role'] = $user['role'];
             $_SESSION['logged_in'] = true;
@@ -117,7 +113,7 @@ class Auth {
             }
 
             // Log activity
-            Activity::log($user['id'], 'login', 'user', $user['id']);
+            Activity::logLogin($user['id']);
 
             return ['success' => true, 'message' => 'Login successful', 'user' => $user];
         } catch (Exception $e) {
@@ -131,7 +127,7 @@ class Auth {
     public function logout() {
         if (isset($_SESSION['user_id'])) {
             $userId = $_SESSION['user_id'];
-            Activity::log($userId, 'logout', 'user', $userId);
+            Activity::logLogout($userId);
         }
 
         $_SESSION = [];
@@ -147,7 +143,7 @@ class Auth {
     public function verifyEmail($token) {
         try {
             $stmt = $this->db->prepare("
-                SELECT id, email FROM users WHERE email_token = ? AND email_verified = 0
+                SELECT id, email FROM users WHERE verification_token = ? AND email_verified = 0
             ");
             $stmt->execute([$token]);
 
@@ -157,9 +153,7 @@ class Auth {
 
             $user = $stmt->fetch();
 
-            $updateStmt = $this->db->prepare("
-                UPDATE users SET email_verified = 1, email_token = NULL WHERE id = ?
-            ");
+            $updateStmt = $this->db->prepare("UPDATE users SET email_verified = 1, verification_token = NULL WHERE id = ?");
             $updateStmt->execute([$user['id']]);
 
             return ['success' => true, 'message' => 'Email verified successfully'];
@@ -173,7 +167,7 @@ class Auth {
      */
     public function forgotPassword($email) {
         try {
-            $stmt = $this->db->prepare("SELECT id, name FROM users WHERE email = ?");
+            $stmt = $this->db->prepare("SELECT id, full_name, username FROM users WHERE email = ?");
             $stmt->execute([$email]);
 
             if ($stmt->rowCount() === 0) {
@@ -186,12 +180,12 @@ class Auth {
             $expiry = date('Y-m-d H:i:s', time() + PASSWORD_RESET_TOKEN_EXPIRY);
 
             $updateStmt = $this->db->prepare("
-                UPDATE users SET password_reset_token = ?, password_reset_token_expiry = ? WHERE id = ?
+                UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?
             ");
             $updateStmt->execute([$token, $expiry, $user['id']]);
 
             // Send email
-            Email::sendPasswordReset($email, $user['name'], $token);
+            Email::sendPasswordReset($email, $user['full_name'] ?: $user['username'], $token);
 
             return ['success' => true, 'message' => 'Password reset link has been sent to your email'];
         } catch (Exception $e) {
@@ -206,8 +200,8 @@ class Auth {
         try {
             $stmt = $this->db->prepare("
                 SELECT id FROM users 
-                WHERE password_reset_token = ? 
-                AND password_reset_token_expiry > NOW()
+                WHERE reset_token = ? 
+                AND reset_token_expiry > NOW()
             ");
             $stmt->execute([$token]);
 
@@ -220,7 +214,7 @@ class Auth {
 
             $updateStmt = $this->db->prepare("
                 UPDATE users 
-                SET password = ?, password_reset_token = NULL, password_reset_token_expiry = NULL 
+                SET password = ?, reset_token = NULL, reset_token_expiry = NULL 
                 WHERE id = ?
             ");
             $updateStmt->execute([$hashedPassword, $user['id']]);
@@ -267,7 +261,7 @@ class Auth {
     public function getUserById($userId) {
         try {
             $stmt = $this->db->prepare("
-                SELECT id, name, email, phone, address, role, status, email_verified, 
+                SELECT id, username, full_name, email, phone, address, role, status, email_verified, 
                        profile_picture, bio, created_at, last_login
                 FROM users 
                 WHERE id = ?
@@ -338,6 +332,26 @@ class Auth {
     public static function requireAdmin() {
         if (!self::isAdmin()) {
             header('Location: ' . APP_URL . '/admin/login');
+            exit;
+        }
+    }
+
+    /**
+     * Require owner access
+     */
+    public static function requireOwner() {
+        if (!self::isOwner()) {
+            header('Location: ' . APP_URL . '/login');
+            exit;
+        }
+    }
+
+    /**
+     * Require tenant access
+     */
+    public static function requireTenant() {
+        if (!self::isTenant()) {
+            header('Location: ' . APP_URL . '/login');
             exit;
         }
     }
