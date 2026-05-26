@@ -1,0 +1,53 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fb;
+    color: #1f2a37;
+}
+
+.hero-section {
+    background: linear-gradient(0deg, rgba(15, 23, 42, 0.35), rgba(15, 23, 42, 0.35)),
+        url('https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1600&q=80') center/cover;
+    padding: 4.5rem 0 3.5rem;
+}
+
+.hero-search {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+}
+
+.search-btn {
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+}
+
+.listing-section {
+    margin-top: -1.5rem;
+}
+
+.listing-card img {
+    height: 220px;
+    object-fit: cover;
+}
+
+.price-badge {
+    position: absolute;
+    bottom: -16px;
+    right: 16px;
+    background: #ffffff;
+    padding: 0.35rem 0.75rem;
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+    font-weight: 600;
+}
+
+.map-placeholder {
+    height: 320px;
+    background: #f1f5f9;
+    border-radius: 12px;
+}
+
+.footer {
+    background-color: #ffffff;
+}

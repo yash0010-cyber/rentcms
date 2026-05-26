@@ -24,6 +24,9 @@ define('DB_CHARSET', 'utf8mb4');
 define('SESSION_TIMEOUT', 1800); // 30 minutes in seconds
 define('PASSWORD_MIN_LENGTH', 8);
 define('PASSWORD_HASH_ALGO', PASSWORD_BCRYPT);
+define('REQUIRE_EMAIL_VERIFICATION', true);
+define('REMEMBER_ME_DURATION', 30); // days
+define('PASSWORD_RESET_TOKEN_EXPIRY', 3600); // seconds
 
 // Email Configuration (PHPMailer)
 define('MAIL_HOST', 'smtp.gmail.com');
