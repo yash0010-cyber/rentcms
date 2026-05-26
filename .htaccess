@@ -1,0 +1,60 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /rentcms/
+
+    # Don't rewrite if the request is for a real file
+    RewriteCond %{REQUEST_FILENAME} !-f
+    
+    # Don't rewrite if the request is for a real directory
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Rewrite all requests to index.php
+    RewriteRule ^(.*)$ index.php?/$1 [QSA,L]
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # Prevent MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # Enable XSS protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Referrer Policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Feature Policy
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# Deny access to sensitive files
+<FilesMatch "^(config|src|database|logs|storage)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(env|json)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Disable directory listing
+Options -Indexes
+
+# Compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+</IfModule>
